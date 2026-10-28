@@ -499,24 +499,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 <title>Evren</title>
 </head>
 <body>
-<header id="bar">
-  <select id="mode" title="Kip"><option value="normal">normal</option><option value="plan">plan</option><option value="ask">ask</option></select>
-  <button id="model" class="link" title="Model seç">model</button>
-  <span class="spacer"></span>
-  <button id="history" class="icon" title="Oturum geçmişi">⟲</button>
-  <button id="new" class="icon" title="Yeni oturum">＋</button>
-</header>
 <div id="banner" hidden></div>
 <section id="todos" hidden></section>
 <main id="log"></main>
 <footer>
-  <textarea id="input" rows="3" placeholder="Evren'e yaz… (@ dosya ekler, Enter gönderir, Shift+Enter yeni satır)"></textarea>
-  <div class="row">
-    <span id="status"></span>
+  <div id="working" hidden>
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="stage">Düşünüyor</span>
+    <span id="elapsed"></span>
     <span class="spacer"></span>
-    <button id="attach" class="icon" title="Dosya ekle">@</button>
-    <button id="stop" hidden>Durdur</button>
-    <button id="send">Gönder</button>
+    <span class="hint">Esc ile durdur</span>
+  </div>
+  <div class="composer">
+    <textarea id="input" rows="3" placeholder="Evren'e yaz… (@ dosya ekler, Enter gönderir, Shift+Enter yeni satır)"></textarea>
+    <div class="toolbar">
+      <select id="mode" class="chip" title="Kip (Shift+Tab ile değiştir)">
+        <option value="normal">Normal</option><option value="plan">Plan</option><option value="ask">Sor</option>
+      </select>
+      <button id="model" class="chip" title="Model seç">model</button>
+      <button id="attach" class="icon" title="Dosya ekle (@)">@</button>
+      <span class="spacer"></span>
+      <span id="status"></span>
+      <button id="stop" class="round stop" hidden title="Durdur (Esc)" aria-label="Durdur"></button>
+      <button id="send" class="round send" title="Gönder (Enter)" aria-label="Gönder"></button>
+    </div>
   </div>
 </footer>
 <script nonce="${nonce}" src="${script}"></script>

@@ -17,6 +17,9 @@ declare function acquireVsCodeApi(): VsApi;
   const statusEl = $<HTMLElement>('status');
   const banner = $<HTMLElement>('banner');
   const todosEl = $<HTMLElement>('todos');
+  const workingEl = $<HTMLElement>('working');
+  const stageEl = $<HTMLElement>('stage');
+  const elapsedEl = $<HTMLElement>('elapsed');
 
   let busy = false;
   let ready = false;
@@ -25,6 +28,9 @@ declare function acquireVsCodeApi(): VsApi;
   let assistantText = '';
   let reasoningEl: HTMLElement | undefined;
   let renderQueued = false;
+  // Çalışma çubuğu: tur başlangıcı ve saniyelik sayaç.
+  let turnStartedAt = 0;
+  let tick: number | undefined;
   const toolCards = new Map<string, HTMLElement>();
   const proposals = new Map<string, string>(); // request_id → path
 
@@ -109,6 +115,9 @@ declare function acquireVsCodeApi(): VsApi;
   }
 
   function endStream(): void {
+    // Bekleyen kare çizimi balonu kaybetmeden son metni yazsın.
+    if (assistantEl) assistantEl.innerHTML = markdown(assistantText);
+    assistantEl?.classList.remove('streaming');
     assistantEl = undefined;
     assistantText = '';
     reasoningEl = undefined;
@@ -123,9 +132,37 @@ declare function acquireVsCodeApi(): VsApi;
   }
 
   function setBusy(b: boolean): void {
-    busy = b;
-    stopBtn.hidden = !b;
     sendBtn.disabled = b || !ready;
+    stopBtn.hidden = !b;
+    sendBtn.hidden = b;
+    if (b === busy) return;
+    busy = b;
+    workingEl.hidden = !b;
+    clearInterval(tick);
+    tick = undefined;
+    if (b) {
+      if (!turnStartedAt) turnStartedAt = Date.now();
+      updateElapsed();
+      tick = window.setInterval(updateElapsed, 1000);
+    } else {
+      turnStartedAt = 0;
+      setStage('Düşünüyor…');
+    }
+  }
+
+  /** Çalışma çubuğundaki aşama metni; `waiting` kullanıcıdan yanıt beklendiğini gösterir. */
+  function setStage(text: string, waiting = false): void {
+    stageEl.textContent = text;
+    workingEl.classList.toggle('waiting', waiting);
+  }
+
+  function updateElapsed(): void {
+    elapsedEl.textContent = turnStartedAt ? formatElapsed(Date.now() - turnStartedAt) : '';
+  }
+
+  function formatElapsed(ms: number): string {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return s < 60 ? `${s} sn` : `${Math.floor(s / 60)} dk ${s % 60} sn`;
   }
 
   function disableCard(card: Element, note: string): void {
@@ -140,7 +177,9 @@ declare function acquireVsCodeApi(): VsApi;
   function onEvent(ev: Record<string, any>): void {
     switch (ev.type) {
       case 'turn_start':
+        if (!turnStartedAt) turnStartedAt = Date.now();
         setBusy(true);
+        setStage('Düşünüyor…');
         endStream();
         break;
       case 'reasoning_delta': {
@@ -153,12 +192,14 @@ declare function acquireVsCodeApi(): VsApi;
           assistantText = '';
         }
         reasoningEl.textContent += ev.text;
+        setStage('Düşünüyor…');
         scroll();
         break;
       }
       case 'assistant_delta':
         if (!assistantEl) {
-          assistantEl = add(el('div', 'msg assistant'));
+          assistantEl = add(el('div', 'msg assistant streaming'));
+          setStage('Yazıyor…');
           assistantText = '';
           reasoningEl = undefined;
         }
@@ -182,6 +223,7 @@ declare function acquireVsCodeApi(): VsApi;
         card.appendChild(sum);
         card.appendChild(el('pre', 'args', JSON.stringify(ev.args, null, 2)));
         toolCards.set(ev.call_id, add(card));
+        setStage(`${ev.name} çalışıyor…`);
         break;
       }
       case 'tool_result': {
@@ -192,6 +234,7 @@ declare function acquireVsCodeApi(): VsApi;
         card.querySelector('.state')!.textContent = ev.ok ? '✓' : '✗';
         const out = el('pre', 'result', ev.summary + (ev.output_truncated ? '\n… (kırpıldı)' : ''));
         card.appendChild(out);
+        setStage('Düşünüyor…');
         break;
       }
       case 'file_change_proposed':
@@ -201,20 +244,23 @@ declare function acquireVsCodeApi(): VsApi;
       case 'approval_request':
         endStream();
         approvalCard(ev);
+        setStage('Onayını bekliyor', true);
         break;
       case 'ask_user':
         endStream();
         askCard(ev);
+        setStage('Cevabını bekliyor', true);
         break;
       case 'todos':
         renderTodos(ev.items || []);
         break;
       case 'turn_end': {
         endStream();
+        const took = turnStartedAt ? ` · ${formatElapsed(Date.now() - turnStartedAt)}` : '';
         setBusy(false);
         const files: string[] = ev.changed_files || [];
         const cls = ev.exit_code === 0 ? 'turn-end' : 'turn-end fail';
-        const text = (ev.exit_code === 0 ? 'Tur bitti' : 'Tur hata/iptal ile bitti') + (files.length ? ` · ${files.length} dosya değişti: ${files.join(', ')}` : '');
+        const text = (ev.exit_code === 0 ? 'Tur bitti' : 'Tur hata/iptal ile bitti') + took + (files.length ? ` · ${files.length} dosya değişti: ${files.join(', ')}` : '');
         add(el('div', cls, text));
         break;
       }
@@ -313,7 +359,7 @@ declare function acquireVsCodeApi(): VsApi;
   function onStatus(s: Record<string, any>): void {
     ready = s.state === 'ready';
     setBusy(!!s.busy);
-    modeSel.value = s.mode;
+    showMode(s.mode);
     modelBtn.textContent = s.model || 'model';
     const tok = s.tokens ? ` · ${s.tokens >= 1000 ? (s.tokens / 1000).toFixed(1) + 'k' : s.tokens} tok` : '';
     const label: Record<string, string> = { starting: 'başlatılıyor…', ready: 'hazır', crashed: 'kapandı', error: 'hata', stopped: 'durdu' };
@@ -346,6 +392,10 @@ declare function acquireVsCodeApi(): VsApi;
         endStream();
         const d = add(el('div', 'msg user', m.text));
         if (Array.isArray(m.attachments) && m.attachments.length) d.appendChild(el('div', 'att', '📎 ' + m.attachments.join(', ')));
+        // turn_start gelmeden de beklendiği görünsün.
+        turnStartedAt = Date.now();
+        setBusy(true);
+        setStage('Gönderiliyor…');
         break;
       }
       case 'insert': {
@@ -357,6 +407,7 @@ declare function acquireVsCodeApi(): VsApi;
       }
       case 'approvalDone': {
         const card = log.querySelector(`.approval[data-request="${CSS.escape(m.request_id)}"]`);
+        if (busy) setStage('Düşünüyor…');
         if (card) disableCard(card, m.decision === 'deny' ? 'Reddedildi' : m.edited ? 'Düzenlenmiş içerikle kabul edildi' : m.decision === 'always' ? 'Her zaman izinli' : 'Kabul edildi');
         break;
       }
@@ -373,23 +424,47 @@ declare function acquireVsCodeApi(): VsApi;
     if (!text.trim() || busy || !ready) return;
     vscode.postMessage({ type: 'send', text });
     input.value = '';
+    input.style.height = '';
+  }
+
+  function cancel(): void {
+    setStage('Durduruluyor…');
+    vscode.postMessage({ type: 'cancel' });
+  }
+
+  function showMode(mode: string): void {
+    modeSel.value = mode;
+    modeSel.className = `chip mode-${mode}`;
+  }
+
+  function setMode(mode: string): void {
+    showMode(mode);
+    vscode.postMessage({ type: 'setMode', mode });
   }
 
   sendBtn.onclick = send;
-  stopBtn.onclick = () => vscode.postMessage({ type: 'cancel' });
+  stopBtn.onclick = cancel;
   $<HTMLButtonElement>('attach').onclick = () => vscode.postMessage({ type: 'pickFile' });
-  $<HTMLButtonElement>('history').onclick = () => vscode.postMessage({ type: 'history' });
-  $<HTMLButtonElement>('new').onclick = () => vscode.postMessage({ type: 'newSession' });
   modelBtn.onclick = () => vscode.postMessage({ type: 'pickModel' });
-  modeSel.onchange = () => vscode.postMessage({ type: 'setMode', mode: modeSel.value });
+  modeSel.onchange = () => setMode(modeSel.value);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       send();
     } else if (e.key === 'Escape' && busy) {
-      vscode.postMessage({ type: 'cancel' });
+      cancel();
+    } else if (e.key === 'Tab' && e.shiftKey && !busy) {
+      e.preventDefault();
+      const modes = Array.from(modeSel.options).map((o) => o.value);
+      setMode(modes[(modes.indexOf(modeSel.value) + 1) % modes.length]);
     }
   });
+  // Metin kutusu içeriğe göre büyür (CSS max-height ile sınırlı).
+  const autosize = () => {
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight}px`;
+  };
+  input.addEventListener('input', autosize);
   input.addEventListener('input', (e) => {
     const ie = e as InputEvent;
     if (ie.data === '@') {
