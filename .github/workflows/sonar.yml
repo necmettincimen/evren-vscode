@@ -17,11 +17,11 @@ jobs:
       # Settings > Secrets and variables > Actions > SONAR_TOKEN. Yoksa iş atlanır.
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.SONAR_TOKEN != ''
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.SONAR_TOKEN != ''
         with:
           node-version: 22
@@ -29,5 +29,5 @@ jobs:
       - name: Birim testleri + kapsam (lcov)
         if: env.SONAR_TOKEN != ''
         run: npm ci && npm run coverage
-      - uses: SonarSource/sonarqube-scan-action@v5
+      - uses: SonarSource/sonarqube-scan-action@v7
         if: env.SONAR_TOKEN != ''
