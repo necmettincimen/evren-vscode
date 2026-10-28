@@ -61,9 +61,18 @@ API anahtarları ayarlara yazılmaz; CLI kendi yapılandırmasını (`~/.evren`,
 
 ```
 npm test          # derleme + protokol istemcisi birim testleri (sahte süreç)
-npm run test:e2e  # gerçek evren --stdio ile Extension Host içinde bir tur (LLM kotası harcar)
+npm run test:e2e  # gerçek evren --stdio ile Extension Host içinde senaryolar (LLM kotası harcar, ~3 dk)
 ```
 
-`test:e2e` geçici bir git deposunda README'ye satır ekletir, diff'in sağ tarafını düzenleyip onaylar
-ve düzenlenmiş içeriğin diske yazıldığını, ardından `list_sessions` / `resume` akışını doğrular.
+`test:e2e` geçici bir git deposunda senaryoları sırayla koşar (`EVREN_E2E_ONLY=ad1,ad2` ile seçilir):
+
+| Senaryo | Doğruladığı |
+|---|---|
+| `ayarlar` | `list_models`/`set_model`, kip değişimi, hatalı kip/oturum/slash hata kodları |
+| `duzenleme` | diff'in sağ tarafı elle düzenlenip onaylanır, `edited_content` diske yazılır |
+| `reddet` | tüm onaylar reddedilir: dosya değişmez, diff kapanır, ret modele iletilir |
+| `iptal` | tur ortasında `cancel` → `turn_end` hızlı gelir, sonraki tur çalışır |
+| `uygulama` | ajan sıfırdan `app/` altında Python todo CLI + unittest yazar ve test eder; testler ve CLI ayrıca dışarıdan çalıştırılır, `always` kuralının yazıldığı kontrol edilir |
+| `oturumlar` | `list_sessions` / `resume` |
+
 Kurulu VS Code'u kullanır (`VSCODE_EXE` ile değiştirilebilir).

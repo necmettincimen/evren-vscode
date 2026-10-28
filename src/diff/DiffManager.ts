@@ -14,6 +14,8 @@ interface Proposal {
   newContent: string;
   origUri: vscode.Uri;
   proposedUri: vscode.Uri;
+  /** Diff sekmesinin açılması; onay hızlı gelirse close bunu bekler. */
+  shown?: Promise<void>;
 }
 
 export class DiffManager implements vscode.TextDocumentContentProvider, vscode.Disposable {
@@ -44,8 +46,10 @@ export class DiffManager implements vscode.TextDocumentContentProvider, vscode.D
     fs.writeFileSync(proposedPath, newContent, 'utf8');
     const origUri = vscode.Uri.from({ scheme: ORIG_SCHEME, path: '/' + base, query: `r=${encodeURIComponent(requestId)}` });
     const proposedUri = vscode.Uri.file(proposedPath);
-    this.proposals.set(requestId, { requestId, path: filePath, oldContent, newContent, origUri, proposedUri });
-    await this.show(requestId);
+    const p: Proposal = { requestId, path: filePath, oldContent, newContent, origUri, proposedUri };
+    this.proposals.set(requestId, p);
+    p.shown = this.show(requestId);
+    await p.shown;
   }
 
   async show(requestId: string): Promise<void> {
@@ -85,6 +89,7 @@ export class DiffManager implements vscode.TextDocumentContentProvider, vscode.D
       return;
     }
     this.proposals.delete(requestId);
+    await p.shown?.catch(() => undefined);
     const target = p.proposedUri.toString();
     const tabs = vscode.window.tabGroups.all
       .flatMap((g) => g.tabs)
