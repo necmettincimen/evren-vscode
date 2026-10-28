@@ -1,0 +1,199 @@
+{
+  "name": "evren-vscode",
+  "displayName": "Evren",
+  "description": "EVREN CLI için sohbet paneli: akan yanıt, araç kartları, diff onayı, oturumlar.",
+  "version": "0.1.0",
+  "publisher": "evren",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "evren",
+          "title": "Evren",
+          "icon": "media/evren.svg"
+        }
+      ]
+    },
+    "views": {
+      "evren": [
+        {
+          "type": "webview",
+          "id": "evren.chat",
+          "name": "Sohbet"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "evren.openChat",
+        "title": "Evren: Open Chat"
+      },
+      {
+        "command": "evren.newSession",
+        "title": "Evren: New Session"
+      },
+      {
+        "command": "evren.addSelection",
+        "title": "Evren: Add Selection to Chat"
+      },
+      {
+        "command": "evren.cancel",
+        "title": "Evren: Cancel"
+      },
+      {
+        "command": "evren.showLogs",
+        "title": "Evren: Show Logs"
+      },
+      {
+        "command": "evren.restart",
+        "title": "Evren: Restart CLI"
+      },
+      {
+        "command": "evren.resumeSession",
+        "title": "Evren: Resume Session"
+      },
+      {
+        "command": "evren.selectModel",
+        "title": "Evren: Select Model"
+      },
+      {
+        "command": "evren.selectMode",
+        "title": "Evren: Select Mode"
+      },
+      {
+        "command": "evren.acceptChange",
+        "title": "Evren: Accept Change",
+        "icon": "$(check)"
+      },
+      {
+        "command": "evren.rejectChange",
+        "title": "Evren: Reject Change",
+        "icon": "$(close)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "evren.acceptChange",
+          "when": "evren.pendingDiff && isInDiffEditor",
+          "group": "navigation@1"
+        },
+        {
+          "command": "evren.rejectChange",
+          "when": "evren.pendingDiff && isInDiffEditor",
+          "group": "navigation@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "evren.newSession",
+          "when": "view == evren.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "evren.resumeSession",
+          "when": "view == evren.chat",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "evren.addSelection",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Evren",
+      "properties": {
+        "evren.cliPath": {
+          "type": "string",
+          "default": "evren",
+          "description": "evren çalıştırılabilir dosyası (PATH'te ad ya da tam yol)."
+        },
+        "evren.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Doluysa CLI `<python> -m src.cli --stdio` ile başlatılır (çalışma dizini evren.cliRepo)."
+        },
+        "evren.cliRepo": {
+          "type": "string",
+          "default": "",
+          "description": "evren.pythonPath kullanılırken evren-cli kaynak dizini."
+        },
+        "evren.model": {
+          "type": "string",
+          "default": "",
+          "description": "Başlangıç modeli (boşsa CLI varsayılanı)."
+        },
+        "evren.defaultMode": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "plan",
+            "ask"
+          ],
+          "default": "normal",
+          "description": "Başlangıç kipi."
+        },
+        "evren.autoApprove": {
+          "type": "string",
+          "enum": [
+            "none",
+            "edits",
+            "all"
+          ],
+          "default": "none",
+          "description": "none: her şeyi sor; edits: dosya düzenlemelerini onaysız uygula; all: --yes."
+        },
+        "evren.allowedTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Onaysız çalışacak araçlar (--allowed-tools)."
+        },
+        "evren.extraEnv": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "CLI sürecine eklenecek ortam değişkenleri. API anahtarı yazmayın."
+        },
+        "evren.autoAttachActiveFile": {
+          "type": "boolean",
+          "default": false,
+          "description": "Her isteğe aktif dosyayı ek olarak koy."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./ && tsc -p ./webview",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
+    "package": "vsce package --allow-missing-repository",
+    "test:e2e": "npm run compile && node out/test/e2e/run.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "typescript": "~5.9.3"
+  }
+}
