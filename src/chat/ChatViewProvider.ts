@@ -10,6 +10,9 @@ import { activeFileAttachment, pickFileMention, selectionMention } from '../cont
 
 type State = 'stopped' | 'starting' | 'ready' | 'crashed' | 'error';
 
+/** Değişince CLI sürecinin yeniden başlatılması gereken ayarlar (buildLaunch girdileri). */
+const LAUNCH_SETTINGS = ['cliPath', 'pythonPath', 'cliRepo', 'model', 'autoApprove', 'allowedTools', 'extraEnv'];
+
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   static readonly viewId = 'evren.chat';
 
@@ -19,6 +22,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private proc?: EvrenProcess;
   private state: State = 'stopped';
   private busy = false;
+  private restartAfterTurn = false;
   private model = '';
   private mode: Mode = 'normal';
   private version = '';
@@ -42,6 +46,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.statusItem.show();
     this.mode = vscode.workspace.getConfiguration('evren').get<Mode>('defaultMode', 'normal');
     this.updateStatusBar();
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (!LAUNCH_SETTINGS.some((k) => e.affectsConfiguration(`evren.${k}`)) || !this.proc?.running) {
+          return;
+        }
+        // Başlatma argümanları değişti: süreç yeni ayarla açılır; tur sürüyorsa bitince.
+        if (this.busy) {
+          this.restartAfterTurn = true;
+          void vscode.window.showInformationMessage('Evren ayarı değişti; CLI tur bitince yeniden başlatılacak.');
+        } else {
+          void this.restart();
+        }
+      }),
+    );
   }
 
   // --- Webview ---
@@ -299,6 +317,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.busy = false;
         this.clearPending();
         this.postStatus();
+        if (this.restartAfterTurn) {
+          this.restartAfterTurn = false;
+          void this.restart();
+        }
         break;
       case 'file_change_proposed':
         void this.diff.propose(ev.request_id, ev.path, ev.old_content, ev.new_content).catch((err) => this.reportError(err));

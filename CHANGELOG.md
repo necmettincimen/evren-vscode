@@ -2,6 +2,11 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [0.1.1] - 2026-10-28
+
+### Değişti
+- Başlatma ayarları (`evren.autoApprove`, `evren.model`, `evren.allowedTools`, `evren.cliPath` vb.) değişince CLI süreci kendiliğinden yeniden başlar; tur sürüyorsa tur bitince.
+
 ## [0.1.0] - 2026-10-28
 
 İlk herkese açık sürüm. En az **evren-cli 3.10.0** gerekir (stdio protokolü v1).

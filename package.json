@@ -2,7 +2,7 @@
   "name": "evren-vscode",
   "displayName": "Evren",
   "description": "EVREN CLI için sohbet paneli: akan yanıt, araç kartları, diff onayı, oturumlar.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "necmettincimen",
   "license": "MIT",
   "icon": "media/icon.png",
