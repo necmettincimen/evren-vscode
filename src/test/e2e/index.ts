@@ -6,6 +6,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import type { AgentNode, AgentsView } from '../../agents/AgentsView';
 import type { ChatViewProvider } from '../../chat/ChatViewProvider';
 import type { EvrenProcess } from '../../cli/EvrenProcess';
 import type { Decision, EvrenEvent, EventOf } from '../../cli/protocol';
@@ -17,6 +18,7 @@ type ApprovalEv = EventOf<'approval_request'>;
 interface Ctx {
   ws: string;
   chat: ChatViewProvider;
+  agents: AgentsView;
   proc: EvrenProcess;
 }
 
@@ -155,6 +157,67 @@ const scenarios: Record<string, (ctx: Ctx) => Promise<void>> = {
       ctx.proc.request({ type: 'slash', command: 'exit' }, 'sessions'),
       (e: { code: string }) => e.code === 'unsupported_slash',
     );
+  },
+
+  /** Ajanlar paneli: bu pencerenin stdio süreci, sahte başsız ajan, günlük, sonlandırma. */
+  async ajanlar(ctx) {
+    const logDir = path.join(ctx.ws, 'reports', 'agent-logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, 'e2e-demo-a1.log');
+    fs.writeFileSync(logFile, ['başladı', 'sahte ajan çalışıyor: adım 2/5', ''].join('\n'));
+    const prompt = 'e2e sahte ajan görevi ğüşıöç';
+    // Komut satırı başsız ajana benzer; python yalnız uyur.
+    const fake = cp.spawn('python', ['-c', 'import time; time.sleep(120)', '-m', 'src.cli', '-w', ctx.ws, '--max-steps', '7', '-m', 'e2e-model', '-p', prompt], {
+      stdio: 'ignore', windowsHide: true,
+    });
+    const exited = new Promise<void>((r) => fake.once('exit', () => r()));
+    try {
+      const procs = (): AgentNode[] => ctx.agents.getChildren({ type: 'section', id: 'processes' });
+      const find = (pid: number | undefined) =>
+        procs().find((n): n is Extract<AgentNode, { type: 'process' }> => n.type === 'process' && n.proc.pid === pid);
+      for (let i = 0; i < 10 && !find(fake.pid); i++) {
+        await ctx.agents.refresh();
+        if (!find(fake.pid)) await new Promise((r) => setTimeout(r, 500));
+      }
+      assert.equal(ctx.agents.snapshot.error, undefined, 'süreç listesi hatası');
+      const node = find(fake.pid);
+      assert.ok(node, 'sahte ajan listede yok');
+      assert.equal(node.proc.kind, 'agent');
+      assert.equal(node.proc.prompt, prompt, 'istem bozuk (kodlama?)');
+      assert.equal(node.proc.maxSteps, 7);
+      const item = ctx.agents.getTreeItem(node);
+      log(`  ajan öğesi: ${item.label} — ${item.description}`);
+      assert.equal(item.contextValue, 'evrenProcess');
+      assert.ok(String(item.description).includes('e2e-model'), 'açıklamada model yok');
+
+      const own = find(ctx.chat.process?.pid);
+      assert.ok(own, 'bu pencerenin stdio süreci listede yok');
+      assert.equal(own.proc.kind, 'stdio');
+      const ownItem = ctx.agents.getTreeItem(own);
+      assert.ok(String(ownItem.label).includes('bu pencere'));
+      assert.equal(ownItem.contextValue, 'evrenProcess.own', 'kendi süreci sonlandırılabilir görünüyor');
+
+      const logs = ctx.agents.getChildren({ type: 'section', id: 'logs' });
+      const ln = logs.find((n): n is Extract<AgentNode, { type: 'log' }> => n.type === 'log' && n.log.file === logFile);
+      assert.ok(ln, 'günlük listede yok');
+      assert.ok(ln.log.active, 'günlük aktif değil');
+      assert.equal(ln.log.lastLine, 'sahte ajan çalışıyor: adım 2/5');
+      const sec = ctx.agents.getTreeItem({ type: 'section', id: 'logs' });
+      assert.ok(String(sec.label).includes('aktif'), `bölüm etiketi: ${sec.label}`);
+
+      await ctx.agents.openLog(ln);
+      assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath.toLowerCase(), logFile.toLowerCase(), 'günlük açılmadı');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+      assert.ok(await ctx.agents.stop(node, { confirm: false }), 'stop false döndü');
+      await Promise.race([exited, new Promise((_, rej) => setTimeout(() => rej(new Error('sahte ajan sonlanmadı')), 15_000))]);
+      await ctx.agents.refresh();
+      assert.equal(find(fake.pid), undefined, 'sonlanan ajan listede kaldı');
+      assert.ok(find(ctx.chat.process?.pid), 'stdio süreci de gitti');
+    } finally {
+      fake.kill();
+      fs.rmSync(path.join(ctx.ws, 'reports'), { recursive: true, force: true });
+    }
   },
 
   /** Düzenleme önerisi diff'te açılır, sağ taraf elle düzenlenir, düzenlenen içerik yazılır. */
@@ -299,12 +362,12 @@ const scenarios: Record<string, (ctx: Ctx) => Promise<void>> = {
 export async function run(): Promise<void> {
   const ws = process.env.EVREN_E2E_WS!;
   const ext = vscode.extensions.all.find((e) => e.packageJSON.name === 'evren-vscode')!;
-  const { chat } = (await ext.activate()) as { chat: ChatViewProvider };
+  const { chat, agents } = (await ext.activate()) as { chat: ChatViewProvider; agents: AgentsView };
   await vscode.commands.executeCommand('evren.openChat');
   await chat.start();
   const proc = await waitFor(() => (chat.process?.ready ? chat.process : undefined), 60_000, 'ready');
   log(`hazır: evren ${proc.ready!.version}, model ${proc.ready!.model}, ${ws}`);
-  const ctx: Ctx = { ws, chat, proc };
+  const ctx: Ctx = { ws, chat, agents, proc };
 
   const only = (process.env.EVREN_E2E_ONLY || '').split(',').map((s) => s.trim()).filter(Boolean);
   const results: { name: string; ok: boolean; ms: number; err?: string }[] = [];

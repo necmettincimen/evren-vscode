@@ -17,6 +17,12 @@ Ajan mantığı, model erişimi ve anahtarlar CLI'da kalır.
 - Durum çubuğunda model · kip · token
 - `@` ile dosya seçici, `Ctrl+Alt+K` seçimi `@yol#L10-20` olarak ekler
 - stderr ve süreç günlüğü **Evren** çıktı kanalında (`Evren: Show Logs`)
+- **Ajanlar** paneli (Evren kenar çubuğunda, sohbetin altında): makinede çalışan Evren süreçleri
+  (`evren plan`, başsız `-p` ajanları, stdio sohbetleri, etkileşimli oturumlar) plan → ajan ağacı olarak;
+  model, süre, çalışma dizini, istemin tamamı ipucunda. Satırdan istemi kopyala / sonlandır (onaylı,
+  alt süreçlerle birlikte; bu pencerenin süreci korunur). `reports/agent-logs/*.log` günlükleri son
+  satırıyla listelenir, son 90 sn'de yazılan "aktif" sayılır, tıklayınca sonuna gidilerek açılır.
+  Panel görünürken 5 sn'de bir yenilenir, rozet çalışan ajan sayısını gösterir.
 
 ## Kurulum
 
@@ -49,7 +55,7 @@ API anahtarları ayarlara yazılmaz; CLI kendi yapılandırmasını (`~/.evren`,
 ## Komutlar
 
 `Evren: Open Chat`, `New Session`, `Resume Session`, `Add Selection to Chat`, `Cancel`,
-`Select Model`, `Select Mode`, `Restart CLI`, `Show Logs`.
+`Select Model`, `Select Mode`, `Restart CLI`, `Show Logs`, `Ajanları yenile`.
 
 ## Protokol sürüm uyumu
 
@@ -73,6 +79,7 @@ npm run test:e2e  # gerçek evren --stdio ile Extension Host içinde senaryolar 
 | `reddet` | tüm onaylar reddedilir: dosya değişmez, diff kapanır, ret modele iletilir |
 | `iptal` | tur ortasında `cancel` → `turn_end` hızlı gelir, sonraki tur çalışır |
 | `uygulama` | ajan sıfırdan `app/` altında Python todo CLI + unittest yazar ve test eder; testler ve CLI ayrıca dışarıdan çalıştırılır, `always` kuralının yazıldığı kontrol edilir |
+| `ajanlar` | sahte başsız ajan + günlük: panelde görünür, Türkçe istem bozulmaz, günlük açılır, sonlandırma çalışır, kendi stdio süreci korunur |
 | `oturumlar` | `list_sessions` / `resume` |
 
 Kurulu VS Code'u kullanır (`VSCODE_EXE` ile değiştirilebilir).

@@ -117,6 +117,10 @@ export class EvrenProcess extends EventEmitter {
     super();
   }
 
+  get pid(): number | undefined {
+    return this.child?.pid;
+  }
+
   get running(): boolean {
     return !!this.child && this.child.exitCode === null && !this.child.killed;
   }
