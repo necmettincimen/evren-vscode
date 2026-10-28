@@ -5,3 +5,10 @@ out/test/**
 **/*.map
 **/tsconfig.json
 node_modules/**
+.github/**
+protocol/**
+coverage/**
+.gitignore
+.coderabbit.yaml
+sonar-project.properties
+*.vsix

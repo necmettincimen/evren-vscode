@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # İsteğe bağlı mağaza yayınları; secret yoksa adım atlanır.
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Etiket package.json sürümüyle aynı mı
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          [ "$(node -p "require('./package.json').version")" = "$v" ] || { echo "::error::package.json sürümü $v değil"; exit 1; }
+      - run: npm ci
+      - run: npm test
+      - run: npx vsce package -o "evren-vscode-${GITHUB_REF_NAME#v}.vsix"
+      - name: Sürüm notları (CHANGELOG.md bölümü)
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v h="## [$v]" 'index($0, "## [") == 1 { f = (index($0, h) == 1); next } f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::CHANGELOG.md içinde [$v] bölümü yok"; exit 1; }
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ./*.vsix --title "evren-vscode $GITHUB_REF_NAME" --notes-file notes.md
+      - name: Visual Studio Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath ./*.vsix -p "$VSCE_PAT"
+      - name: Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx --yes ovsx publish ./*.vsix -p "$OVSX_PAT"

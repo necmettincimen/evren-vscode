@@ -1,4 +1,5 @@
-// `evren --stdio` v1 protokolünün TypeScript karşılığı (evren-cli/docs/stdio-protocol.md).
+// `evren --stdio` v1 protokolünün TypeScript karşılığı (evren-cli/docs/stdio-protocol.md,
+// sözleşme: evren-cli/protocol/stdio-v1.schema.json).
 
 export const PROTOCOL_VERSION = 1;
 export const MIN_CLI_VERSION = '3.10.0';
@@ -29,6 +30,12 @@ export type Command =
   | { type: 'slash'; command: string; args?: string };
 
 export type CommandType = Command['type'];
+
+/** Şemadaki (evren-cli protocol/stdio-v1.schema.json, x-command-types) komut listesi. */
+export const COMMAND_TYPES: readonly CommandType[] = [
+  'prompt', 'cancel', 'approval_response', 'ask_user_response', 'set_model', 'set_mode',
+  'list_sessions', 'resume', 'new_session', 'list_models', 'quota', 'slash',
+];
 
 // --- Olaylar (CLI → eklenti) ---
 
@@ -76,11 +83,14 @@ export type EvrenEvent = Envelope &
 export type EventType = EvrenEvent['type'];
 export type EventOf<T extends EventType> = Extract<EvrenEvent, { type: T }>;
 
-const KNOWN_EVENTS: ReadonlySet<string> = new Set<EventType>([
+/** Şemadaki (x-event-types) olay listesi; sözleşme testi ikisini karşılaştırır. */
+export const EVENT_TYPES: readonly EventType[] = [
   'ready', 'turn_start', 'assistant_delta', 'reasoning_delta', 'tool_call', 'tool_result',
   'file_change_proposed', 'approval_request', 'ask_user', 'todos', 'usage', 'turn_end', 'error',
   'model_changed', 'mode_changed', 'sessions', 'session_loaded', 'models', 'quota',
-]);
+];
+
+const KNOWN_EVENTS: ReadonlySet<string> = new Set<string>(EVENT_TYPES);
 
 export function encodeCommand(cmd: Command, id?: string): string {
   const msg: Record<string, unknown> = { v: PROTOCOL_VERSION, ...cmd };

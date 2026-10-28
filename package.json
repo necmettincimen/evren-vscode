@@ -3,9 +3,31 @@
   "displayName": "Evren",
   "description": "EVREN CLI için sohbet paneli: akan yanıt, araç kartları, diff onayı, oturumlar.",
   "version": "0.1.0",
-  "publisher": "evren",
-  "license": "UNLICENSED",
-  "private": true,
+  "publisher": "necmettincimen",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/necmettincimen/evren-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/necmettincimen/evren-vscode/issues"
+  },
+  "homepage": "https://github.com/necmettincimen/evren-vscode#readme",
+  "keywords": [
+    "evren",
+    "ai",
+    "agent",
+    "chat",
+    "cli",
+    "ndjson",
+    "coding assistant",
+    "türkçe"
+  ],
+  "galleryBanner": {
+    "color": "#111827",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -272,13 +294,18 @@
     "compile": "tsc -p ./ && tsc -p ./webview",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
-    "package": "vsce package --allow-missing-repository",
-    "test:e2e": "npm run compile && node out/test/e2e/run.js"
+    "package": "vsce package",
+    "test:e2e": "npm run compile && node out/test/e2e/run.js",
+    "test:compat": "npm run compile && node --test \"out/test/compat/*.compat.js\"",
+    "coverage": "npm run compile && c8 --reporter=lcov --reporter=text-summary node --test \"out/test/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "^20.19.0",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "ajv": "^8.20.0",
+    "c8": "^12.0.0",
     "typescript": "~5.9.3"
   }
 }

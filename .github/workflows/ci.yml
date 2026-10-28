@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  # evren-cli release iş akışı yeni etiketle tetikler (client_payload.tag).
+  repository_dispatch:
+    types: [evren-cli-release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # LLM'siz koşum: evren-cli'nin sahte model sunucusu.
+  EVREN_API_KEY: fake-key
+  EVREN_DEFAULT_MODEL: fake-model
+  EVREN_AUTO_DOCS: "false"
+  EVREN_AUTO_ROUTE: "false"
+  EVREN_CLEF_INTENT: "false"
+  EVREN_SEMANTIC_SEARCH: "false"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  build:
+    name: derleme, birim, paket
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run coverage
+      - run: npx vsce package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: "*.vsix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
+
+  compat:
+    name: CLI uyumluluğu (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: evren-cli etiketi
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+        run: |
+          tag="${DISPATCH_TAG:-$(tr -d '[:space:]' < protocol/CLI_TAG)}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::geçersiz etiket: $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: evren-cli ve sözleşme dosyalarını indir
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          pip install "evren-cli @ git+https://github.com/necmettincimen/evren-cli@$TAG"
+          mkdir -p .cli
+          base="https://raw.githubusercontent.com/necmettincimen/evren-cli/$TAG"
+          curl -fsSL "$base/protocol/stdio-v1.schema.json" -o .cli/stdio-v1.schema.json
+          curl -fsSL "$base/scripts/fake_llm_server.py" -o .cli/fake_llm_server.py
+      - run: npm ci
+      - name: Sözleşme + gerçek CLI uyumluluk testi
+        run: |
+          python .cli/fake_llm_server.py --port-file .cli/port > .cli/fake.log 2>&1 &
+          for _ in $(seq 50); do [ -s .cli/port ] && break; sleep 0.2; done
+          export EVREN_BASE_URL="http://127.0.0.1:$(cat .cli/port)/v1"
+          EVREN_SCHEMA="$PWD/.cli/stdio-v1.schema.json" npm test
+          npm run test:compat
+
+  e2e:
+    name: e2e (xvfb, LLM'siz senaryolar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: evren-cli
+        run: |
+          tag="$(tr -d '[:space:]' < protocol/CLI_TAG)"
+          pip install "evren-cli @ git+https://github.com/necmettincimen/evren-cli@$tag"
+          curl -fsSL "https://raw.githubusercontent.com/necmettincimen/evren-cli/$tag/scripts/fake_llm_server.py" -o /tmp/fake_llm_server.py
+      - run: npm ci
+      - name: Extension Development Host senaryoları
+        env:
+          EVREN_E2E_ONLY: ayarlar,ajanlar
+        run: |
+          python /tmp/fake_llm_server.py --port-file /tmp/port > /tmp/fake.log 2>&1 &
+          for _ in $(seq 50); do [ -s /tmp/port ] && break; sleep 0.2; done
+          export EVREN_BASE_URL="http://127.0.0.1:$(cat /tmp/port)/v1"
+          export EVREN_CLI_HOME="$RUNNER_TEMP/evren-home"
+          xvfb-run -a npm run test:e2e
