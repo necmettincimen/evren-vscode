@@ -260,8 +260,13 @@ declare function acquireVsCodeApi(): VsApi;
         setBusy(false);
         const files: string[] = ev.changed_files || [];
         const cls = ev.exit_code === 0 ? 'turn-end' : 'turn-end fail';
-        const text = (ev.exit_code === 0 ? 'Tur bitti' : 'Tur hata/iptal ile bitti') + took + (files.length ? ` · ${files.length} dosya değişti: ${files.join(', ')}` : '');
+        const text = (ev.exit_code === 0 ? 'Tur bitti' : 'Tur bitmedi') + took + (files.length ? ` · ${files.length} dosya değişti: ${files.join(', ')}` : '');
         add(el('div', cls, text));
+        if (ev.exit_code !== 0) {
+          // CLI'ın verdiği neden (maks. adım, iptal, API hatası) görünmeden "hata" demek işe yaramaz.
+          const reason = String(ev.result || '').trim().split('\n')[0] || 'CLI neden bildirmedi; ayrıntı için Evren: Logları göster.';
+          add(el('div', 'error', reason));
+        }
         break;
       }
       case 'error':

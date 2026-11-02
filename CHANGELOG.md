@@ -2,6 +2,11 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [0.1.2] - 2026-10-28
+
+### Değişti
+- Tur başarısız bittiğinde CLI'ın bildirdiği neden (maksimum adım, iptal, API hatası) sohbette gösterilir; yalnız "hata/iptal" yazılmaz.
+
 ## [0.1.1] - 2026-10-28
 
 ### Değişti
