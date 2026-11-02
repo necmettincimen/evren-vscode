@@ -2,6 +2,11 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [0.1.3] - 2026-11-02
+
+### Değişti
+- En düşük VS Code sürümü 1.90 yerine 1.86 (kullanılan API'ler 1.86'da mevcut).
+
 ## [0.1.2] - 2026-10-28
 
 ### Değişti

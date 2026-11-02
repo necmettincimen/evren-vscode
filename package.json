@@ -2,7 +2,7 @@
   "name": "evren-vscode",
   "displayName": "Evren",
   "description": "EVREN CLI için sohbet paneli: akan yanıt, araç kartları, diff onayı, oturumlar.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "necmettincimen",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -29,7 +29,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.86.0"
   },
   "categories": [
     "AI",
@@ -301,7 +301,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.0",
-    "@types/vscode": "~1.90.0",
+    "@types/vscode": "~1.86.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "ajv": "^8.20.0",
