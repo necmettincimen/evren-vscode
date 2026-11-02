@@ -67,14 +67,17 @@ flowchart LR
 
 ## 🚀 Kurulum
 
-Önkoşul: EVREN CLI ≥ 3.10.0 PATH'te olmalı (`evren --version`). Eski bir sürüm kuruluysa eklenti güncelleme uyarısı verir.
-
-```bash
-pip install "evren-cli @ git+https://github.com/necmettincimen/evren-cli"
-```
+Önkoşul: EVREN CLI PATH'te olmalı (`evren --version`). Önerilen Rust sürümü 4.0.0+
+([evren-rs](https://github.com/necmettincimen/evren-rs), kurulum README'sinde); Python
+sürümü ≥ 3.10.0 da çalışır. Eski bir sürüm kuruluysa eklenti güncelleme uyarısı verir.
 
 1. [Releases](https://github.com/necmettincimen/evren-vscode/releases) sayfasından `evren-vscode-X.Y.Z.vsix` dosyasını indirin.
-2. VS Code'da *Extensions: Install from VSIX…* komutunu çalıştırın. Komut satırından `code --install-extension evren-vscode-X.Y.Z.vsix` de kullanılabilir.
+2. VS Code'da *Extensions: Install from VSIX…* komutunu çalıştırın. Komut satırından:
+
+```powershell
+Invoke-WebRequest https://github.com/necmettincimen/evren-vscode/releases/latest/download/evren-vscode-0.1.2.vsix -OutFile $env:TEMP\evren-vscode.vsix
+code --install-extension $env:TEMP\evren-vscode.vsix
+```
 3. Kenar çubuğundaki Evren simgesine tıklayın.
 
 Kaynaktan geliştirmek için `npm ci && npm run compile` çalıştırın ve VS Code'da **F5** tuşuna basın (Extension Development Host).
