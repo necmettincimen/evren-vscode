@@ -2,7 +2,7 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
-## [Yayınlanmadı]
+## [0.2.0] - 2026-11-03
 
 ### Eklendi
 - Sohbet sekmeleri: her sekme ayrı bir CLI süreci; en fazla 6 oturum aynı anda paralel çalışır (meşgul/yanıt bekliyor göstergesi, orta tıkla kapatma).

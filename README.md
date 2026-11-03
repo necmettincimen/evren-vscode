@@ -77,7 +77,7 @@ sürümü ≥ 3.10.0 da çalışır. Eski bir sürüm kuruluysa eklenti güncell
 2. VS Code'da *Extensions: Install from VSIX…* komutunu çalıştırın. Komut satırından:
 
 ```powershell
-Invoke-WebRequest https://github.com/necmettincimen/evren-vscode/releases/latest/download/evren-vscode-0.1.3.vsix -OutFile $env:TEMP\evren-vscode.vsix
+Invoke-WebRequest https://github.com/necmettincimen/evren-vscode/releases/latest/download/evren-vscode-0.2.0.vsix -OutFile $env:TEMP\evren-vscode.vsix
 code --install-extension $env:TEMP\evren-vscode.vsix
 ```
 3. Kenar çubuğundaki Evren simgesine tıklayın.
