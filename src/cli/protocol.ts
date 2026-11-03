@@ -2,6 +2,9 @@
 // sözleşme: evren-cli/protocol/stdio-v1.schema.json).
 
 export const PROTOCOL_VERSION = 1;
+/** Rust CLI (4.x) turun nasıl bittiğini bildirir; eski CLI göndermez. */
+export type TurnOutcome = 'ok' | 'error' | 'max_steps' | 'interrupted' | 'exception' | 'stuck' | 'budget';
+
 export const MIN_CLI_VERSION = '3.10.0';
 
 export type Mode = 'normal' | 'plan' | 'ask';
@@ -70,7 +73,7 @@ export type EvrenEvent = Envelope &
     | { type: 'ask_user'; request_id: string; question: string; options?: string[] }
     | { type: 'todos'; items: TodoItem[] }
     | { type: 'usage'; prompt_tokens: number; completion_tokens: number; quota_left?: unknown }
-    | { type: 'turn_end'; result: string; changed_files: string[]; exit_code: number }
+    | { type: 'turn_end'; result: string; changed_files: string[]; exit_code: number; outcome?: TurnOutcome }
     | { type: 'error'; message: string; code: string }
     | { type: 'model_changed'; model: string }
     | { type: 'mode_changed'; mode: Mode }

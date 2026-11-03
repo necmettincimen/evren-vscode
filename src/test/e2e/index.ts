@@ -85,7 +85,7 @@ async function runTurn(ctx: Ctx, text: string, opts: TurnOptions = {}): Promise<
             const decision = opts.onApproval ? await opts.onApproval(ev, turn) : 'allow';
             log(`  approval ${ev.kind} → ${decision}: ${(ev.detail || ev.title).split('\n')[0].slice(0, 100)}`);
             turn.approvals.push({ ev, decision });
-            await ctx.chat.answerApproval(ev.request_id, decision);
+            await ctx.chat.active!.answerApproval(ev.request_id, decision);
             break;
           }
           case 'ask_user':
@@ -108,7 +108,7 @@ async function runTurn(ctx: Ctx, text: string, opts: TurnOptions = {}): Promise<
   const ms = opts.timeoutMs ?? 300_000;
   let timer: NodeJS.Timeout | undefined;
   try {
-    await ctx.chat.sendPrompt(text);
+    await ctx.chat.active!.sendPrompt(text, []);
     await Promise.race([
       done,
       new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error(`tur ${ms / 1000} sn içinde bitmedi`)), ms))),
@@ -140,10 +140,10 @@ const scenarios: Record<string, (ctx: Ctx) => Promise<void>> = {
     const changed = await ctx.proc.request({ type: 'set_model', model: models.current }, 'model_changed');
     assert.equal(changed.model, models.current);
 
-    await ctx.chat.setMode('plan');
-    await waitFor(() => (ctx.chat as unknown as { mode: string }).mode === 'plan' || undefined, 5000, 'mode plan');
-    await ctx.chat.setMode('normal');
-    await waitFor(() => (ctx.chat as unknown as { mode: string }).mode === 'normal' || undefined, 5000, 'mode normal');
+    await ctx.chat.active!.setMode('plan');
+    await waitFor(() => ctx.chat.active!.mode === 'plan' || undefined, 5000, 'mode plan');
+    await ctx.chat.active!.setMode('normal');
+    await waitFor(() => ctx.chat.active!.mode === 'normal' || undefined, 5000, 'mode normal');
 
     await assert.rejects(
       ctx.proc.request({ type: 'set_mode', mode: 'yolo' as never }, 'mode_changed'),

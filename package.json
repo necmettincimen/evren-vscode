@@ -68,7 +68,8 @@
       },
       {
         "command": "evren.newSession",
-        "title": "Evren: New Session"
+        "title": "Evren: New Session",
+        "icon": "$(add)"
       },
       {
         "command": "evren.addSelection",
@@ -88,7 +89,8 @@
       },
       {
         "command": "evren.resumeSession",
-        "title": "Evren: Resume Session"
+        "title": "Evren: Resume Session",
+        "icon": "$(history)"
       },
       {
         "command": "evren.selectModel",

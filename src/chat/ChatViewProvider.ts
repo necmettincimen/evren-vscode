@@ -1,65 +1,69 @@
-// Kenar çubuğu sohbet görünümü ve CLI süreci arasındaki köprü.
+// Kenar çubuğu sohbet görünümü: sekmeler (her biri ayrı CLI süreci), geçmiş ve webview köprüsü.
 
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { EvrenProcess, ProtocolError, buildLaunch } from '../cli/EvrenProcess';
-import { Attachment, Decision, EvrenEvent, Mode } from '../cli/protocol';
+import { EvrenProcess } from '../cli/EvrenProcess';
+import { Decision, EvrenEvent, Mode } from '../cli/protocol';
 import { InMsg, MODES, parseInMsg } from './messages';
+import { ChatSession, SessionHost } from './ChatSession';
+import { HistoryItem, listHistory } from './history';
 import { DiffManager } from '../diff/DiffManager';
 import { activeFileAttachment, pickFileMention, selectionMention } from '../context/Mentions';
-
-type State = 'stopped' | 'starting' | 'ready' | 'crashed' | 'error';
+import { Attachment } from '../cli/protocol';
 
 /** Değişince CLI sürecinin yeniden başlatılması gereken ayarlar (buildLaunch girdileri). */
 const LAUNCH_SETTINGS = ['cliPath', 'pythonPath', 'cliRepo', 'model', 'autoApprove', 'allowedTools', 'extraEnv'];
 
-export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
+/** Aynı anda açık sekme (= CLI süreci) üst sınırı. */
+export const MAX_TABS = 6;
+
+export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable, SessionHost {
   static readonly viewId = 'evren.chat';
 
   private view?: vscode.WebviewView;
   private webviewReady = false;
   private outbox: unknown[] = [];
-  private proc?: EvrenProcess;
-  private state: State = 'stopped';
-  private busy = false;
-  private restartAfterTurn = false;
-  private model = '';
-  private mode: Mode = 'normal';
-  private version = '';
-  private tokens = 0;
-  private promptId?: string;
+  private sessions = new Map<string, ChatSession>();
+  private activeId = '';
+  private seq = 0;
   private root = '';
-  private pendingApprovals = new Map<string, string>(); // request_id → kind
-  private pendingAsks = new Set<string>();
+  private history: HistoryItem[] = [];
   private statusItem: vscode.StatusBarItem;
   private disposables: vscode.Disposable[] = [];
-  /** CLI olayları (testler ve ileride başka görünümler için). */
+  /** CLI olayları (testler ve ileride başka görünümler için); tüm sekmeleri kapsar. */
   readonly events = new vscode.EventEmitter<EvrenEvent>();
 
   constructor(
     private ctx: vscode.ExtensionContext,
-    private log: vscode.OutputChannel,
-    private diff: DiffManager,
+    readonly log: vscode.OutputChannel,
+    readonly diff: DiffManager,
   ) {
     this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.statusItem.command = 'evren.openChat';
     this.statusItem.show();
-    this.mode = vscode.workspace.getConfiguration('evren').get<Mode>('defaultMode', 'normal');
     this.updateStatusBar();
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (!LAUNCH_SETTINGS.some((k) => e.affectsConfiguration(`evren.${k}`)) || !this.proc?.running) {
-          return;
-        }
-        // Başlatma argümanları değişti: süreç yeni ayarla açılır; tur sürüyorsa bitince.
-        if (this.busy) {
-          this.restartAfterTurn = true;
-          void vscode.window.showInformationMessage('Evren ayarı değişti; CLI tur bitince yeniden başlatılacak.');
-        } else {
-          void this.restart();
+        if (LAUNCH_SETTINGS.some((k) => e.affectsConfiguration(`evren.${k}`))) {
+          this.sessions.forEach((s) => s.restartForSettings());
         }
       }),
     );
+  }
+
+  // --- SessionHost ---
+
+  post(sid: string, msg: Record<string, unknown>): void {
+    this.postRaw({ ...msg, sid });
+  }
+
+  changed(): void {
+    this.postRaw({ type: 'tabs', tabs: [...this.sessions.values()].map((s) => s.info), active: this.activeId });
+    this.updateStatusBar();
+  }
+
+  fire(ev: EvrenEvent): void {
+    this.events.fire(ev);
   }
 
   // --- Webview ---
@@ -86,7 +90,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     );
   }
 
-  private post(msg: unknown): void {
+  private postRaw(msg: unknown): void {
     if (this.view && this.webviewReady) {
       void this.view.webview.postMessage(msg);
     } else {
@@ -94,70 +98,90 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
   }
 
-  private postStatus(message?: string): void {
-    this.post({
-      type: 'status', state: this.state, busy: this.busy, model: this.model, mode: this.mode,
-      version: this.version, tokens: this.tokens, message,
-    });
-    this.updateStatusBar();
-  }
-
   private updateStatusBar(): void {
-    const icon = this.state === 'ready' ? (this.busy ? '$(sync~spin)' : '$(comment-discussion)') : '$(warning)';
-    const tok = this.tokens ? ` · ${formatTokens(this.tokens)} tok` : '';
-    this.statusItem.text = `${icon} Evren ${this.model || ''} · ${this.mode}${tok}`.replace(/\s+·/, ' ·');
-    this.statusItem.tooltip = this.state === 'ready' ? `evren ${this.version} — ${this.root}` : `Evren: ${this.state}`;
+    const s = this.active;
+    const busyCount = [...this.sessions.values()].filter((x) => x.busy).length;
+    const icon = s?.state === 'ready' ? (busyCount ? '$(sync~spin)' : '$(comment-discussion)') : '$(warning)';
+    const tok = s?.tokens ? ` · ${formatTokens(s.tokens)} tok` : '';
+    const more = busyCount > 1 ? ` · ${busyCount} oturum çalışıyor` : '';
+    this.statusItem.text = `${icon} Evren ${s?.model || ''} · ${s?.mode ?? 'normal'}${tok}${more}`.replace(/\s+·/, ' ·');
+    this.statusItem.tooltip = s?.state === 'ready' ? `evren ${s.version} — ${this.root}` : `Evren: ${s?.state ?? 'stopped'}`;
   }
 
   private async onWebviewMessage(msg: InMsg): Promise<void> {
     switch (msg.type) {
       case 'ready':
         this.webviewReady = true;
+        this.postRaw({ type: 'tabs', tabs: [...this.sessions.values()].map((s) => s.info), active: this.activeId });
+        for (const s of this.sessions.values()) {
+          s.postStatus();
+        }
         for (const m of this.outbox.splice(0)) {
           void this.view?.webview.postMessage(m);
         }
-        this.postStatus();
-        if (this.state === 'stopped') {
-          await this.start();
+        if (!this.sessions.size) {
+          await this.openTab();
         }
         return;
       case 'send':
-        return this.sendPrompt(msg.text);
+        return this.sendPrompt(msg.sid, msg.text);
       case 'cancel':
-        return this.cancel();
+        return this.sessions.get(msg.sid)?.cancel();
       case 'approval':
-        return this.answerApproval(msg.request_id, msg.decision);
+        return this.sessions.get(msg.sid)?.answerApproval(msg.request_id, msg.decision);
       case 'askAnswer':
-        if (this.pendingAsks.delete(msg.request_id)) {
-          this.proc?.send({ type: 'ask_user_response', request_id: msg.request_id, answer: msg.answer });
-        }
-        return;
+        return this.sessions.get(msg.sid)?.answerAsk(msg.request_id, msg.answer);
       case 'showDiff':
-        return this.diff.show(msg.request_id);
+        return this.sessions.get(msg.sid)?.showDiff(msg.request_id);
       case 'setMode':
-        return this.setMode(msg.mode);
+        return this.sessions.get(msg.sid)?.setMode(msg.mode);
       case 'pickModel':
-        return this.selectModel();
-      case 'history':
-        return this.resumeSession();
-      case 'newSession':
-        return this.newSession();
+        return this.sessions.get(msg.sid)?.selectModel();
       case 'restart':
-        return this.restart();
+        return this.sessions.get(msg.sid)?.restart();
+      case 'selectTab':
+        return this.selectTab(msg.sid);
+      case 'closeTab':
+        return this.closeTab(msg.sid);
+      case 'newTab':
+        await this.openTab();
+        return;
+      case 'history':
+        return this.showHistory();
+      case 'resumeHistory':
+        return this.resumeFromHistory(msg.session_id);
       case 'pickFile': {
         const m = await pickFileMention(this.root);
         if (m) {
-          this.post({ type: 'insert', text: m + ' ' });
+          this.postRaw({ type: 'insert', text: m + ' ' });
         }
         return;
       }
       case 'showLogs':
         this.log.show(true);
         return;
+      case 'copy':
+        await vscode.env.clipboard.writeText(msg.text);
+        vscode.window.setStatusBarMessage('Evren: panoya kopyalandı', 1500);
+        return;
     }
   }
 
-  // --- Süreç ---
+  // --- Sekmeler ---
+
+  get active(): ChatSession | undefined {
+    return this.sessions.get(this.activeId);
+  }
+
+  /** Etkin sekmenin CLI süreci (testler ve ajanlar görünümü için). */
+  get process(): EvrenProcess | undefined {
+    return this.active?.proc;
+  }
+
+  /** Bu pencerenin tüm stdio süreçlerinin pid'leri. */
+  pids(): number[] {
+    return [...this.sessions.values()].map((s) => s.proc?.pid).filter((p): p is number => p !== undefined);
+  }
 
   private async pickRoot(): Promise<string | undefined> {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -179,194 +203,108 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     return root;
   }
 
-  async start(): Promise<void> {
-    if (this.state === 'starting' || this.proc?.running) {
+  /** Yeni sekme açar, CLI sürecini başlatır ve etkin yapar. */
+  async openTab(): Promise<ChatSession | undefined> {
+    if (this.sessions.size >= MAX_TABS) {
+      void vscode.window.showInformationMessage(`En fazla ${MAX_TABS} sohbet sekmesi açık olabilir; birini kapatın.`);
+      return undefined;
+    }
+    if (!this.root) {
+      this.root = (await this.pickRoot()) ?? '';
+    }
+    if (!this.root) {
+      void vscode.window.showWarningMessage('Evren için bir klasör açın.');
+      return undefined;
+    }
+    const mode = vscode.workspace.getConfiguration('evren').get<Mode>('defaultMode', 'normal');
+    const session = new ChatSession(`t${++this.seq}`, this, this.root, MODES.includes(mode) ? mode : 'normal');
+    this.sessions.set(session.id, session);
+    this.activeId = session.id;
+    this.changed();
+    await session.start();
+    return session;
+  }
+
+  private selectTab(sid: string): void {
+    if (this.sessions.has(sid) && sid !== this.activeId) {
+      this.activeId = sid;
+      this.changed();
+    }
+  }
+
+  private async closeTab(sid: string): Promise<void> {
+    const s = this.sessions.get(sid);
+    if (!s) {
       return;
     }
-    const root = await this.pickRoot();
-    if (!root) {
-      this.state = 'error';
-      this.postStatus('Evren için bir klasör açın.');
-      return;
-    }
-    this.root = root;
-    const cfg = vscode.workspace.getConfiguration('evren');
-    const launch = buildLaunch({
-      cliPath: cfg.get<string>('cliPath', 'evren') || 'evren',
-      pythonPath: cfg.get<string>('pythonPath', ''),
-      cliRepo: cfg.get<string>('cliRepo', ''),
-      workspace: root,
-      model: cfg.get<string>('model', ''),
-      autoApprove: cfg.get<'none' | 'edits' | 'all'>('autoApprove', 'none'),
-      allowedTools: cfg.get<string[]>('allowedTools', []),
-      extraEnv: cfg.get<Record<string, string>>('extraEnv', {}),
-    });
-    this.log.appendLine(`[evren] başlatılıyor: ${launch.command} ${launch.args.join(' ')} (cwd ${launch.options.cwd})`);
-    const proc = new EvrenProcess(launch, { readyTimeoutMs: 60_000 });
-    this.proc = proc;
-    proc.on('stderr', (s: string) => this.log.append(s));
-    proc.on('protocolError', (line: string) => this.log.appendLine(`[protokol] çözülemeyen satır: ${line.slice(0, 500)}`));
-    proc.on('event', (ev: EvrenEvent) => this.onEvent(ev));
-    proc.on('exit', (info: { code: number | null; signal: string | null; expected: boolean }) => this.onExit(proc, info));
-    this.state = 'starting';
-    this.postStatus();
-    try {
-      const ready = await proc.start();
-      this.state = 'ready';
-      this.model = ready.model;
-      this.version = ready.version;
-      this.log.appendLine(`[evren] hazır: ${ready.version}, model ${ready.model}, ${ready.workspace}`);
-      const wanted = cfg.get<Mode>('defaultMode', 'normal');
-      if (wanted !== 'normal') {
-        await this.setMode(wanted);
-      }
-      this.postStatus();
-    } catch (err) {
-      this.state = 'error';
-      const e = err as ProtocolError;
-      this.log.appendLine(`[evren] başlatma hatası (${e.code}): ${e.message}`);
-      this.postStatus(e.message);
-      await this.explainStartFailure(e);
-    }
-  }
-
-  private async explainStartFailure(e: ProtocolError): Promise<void> {
-    let text: string;
-    if (e.code === 'spawn_failed') {
-      text = 'evren CLI bulunamadı. `pip install -e <evren-cli>` ile kurun ya da `evren.cliPath` ayarını tam yola çevirin.';
-    } else if (e.code === 'old_version') {
-      text = `${e.message}. CLI'yı güncelleyin (\`evren update\` ya da \`git pull && pip install -e .\`).`;
-    } else {
-      text = `Evren başlatılamadı: ${e.message}`;
-    }
-    const pick = await vscode.window.showErrorMessage(text, 'Ayarlar', 'Logları göster', 'Yeniden dene');
-    if (pick === 'Ayarlar') {
-      await vscode.commands.executeCommand('workbench.action.openSettings', 'evren.');
-    } else if (pick === 'Logları göster') {
-      this.log.show(true);
-    } else if (pick === 'Yeniden dene') {
-      await this.restart();
-    }
-  }
-
-  private onExit(proc: EvrenProcess, info: { code: number | null; signal: string | null; expected: boolean }): void {
-    if (proc !== this.proc) {
-      return;
-    }
-    this.log.appendLine(`[evren] süreç çıktı (kod ${info.code ?? info.signal})`);
-    this.busy = false;
-    this.clearPending();
-    if (info.expected || this.state !== 'ready') {
-      if (this.state === 'ready') {
-        this.state = 'stopped';
-      }
-      this.postStatus();
-      return;
-    }
-    this.state = 'crashed';
-    this.postStatus(`CLI beklenmedik şekilde kapandı (kod ${info.code ?? info.signal}).`);
-    void vscode.window.showWarningMessage('Evren CLI kapandı.', 'Yeniden başlat', 'Logları göster').then((pick) => {
-      if (pick === 'Yeniden başlat') {
-        void this.restart();
-      } else if (pick === 'Logları göster') {
-        this.log.show(true);
-      }
-    });
-  }
-
-  private clearPending(): void {
-    this.pendingApprovals.clear();
-    this.pendingAsks.clear();
-    void this.diff.closeAll();
-    this.post({ type: 'pendingCleared' });
-  }
-
-  async restart(): Promise<void> {
-    const old = this.proc;
-    this.proc = undefined;
-    this.clearPending();
-    this.busy = false;
-    this.state = 'stopped';
-    if (old) {
-      await old.stop();
-    }
-    await this.start();
-  }
-
-  get process(): EvrenProcess | undefined {
-    return this.proc;
-  }
-
-  private requireProc(): EvrenProcess | undefined {
-    if (this.proc?.running && this.state === 'ready') {
-      return this.proc;
-    }
-    void vscode.window.showWarningMessage('Evren CLI çalışmıyor.', 'Yeniden başlat').then((p) => p && this.restart());
-    return undefined;
-  }
-
-  // --- Olaylar ---
-
-  private onEvent(ev: EvrenEvent): void {
-    switch (ev.type) {
-      case 'turn_start':
-        this.busy = true;
-        this.postStatus();
-        break;
-      case 'turn_end':
-        this.busy = false;
-        this.clearPending();
-        this.postStatus();
-        if (this.restartAfterTurn) {
-          this.restartAfterTurn = false;
-          void this.restart();
-        }
-        break;
-      case 'file_change_proposed':
-        void this.diff.propose(ev.request_id, ev.path, ev.old_content, ev.new_content).catch((err) => this.reportError(err));
-        // İçerik büyük olabilir; webview'a yalnız yol gider.
-        this.post({ type: 'event', ev: { type: ev.type, request_id: ev.request_id, path: ev.path } });
-        this.events.fire(ev);
+    if (s.busy) {
+      const ok = await vscode.window.showWarningMessage(
+        `"${s.info.title}" çalışıyor; kapatılırsa tur iptal edilir.`, { modal: true }, 'Kapat',
+      );
+      if (ok !== 'Kapat') {
         return;
-      case 'approval_request':
-        this.pendingApprovals.set(ev.request_id, ev.kind);
-        break;
-      case 'ask_user':
-        this.pendingAsks.add(ev.request_id);
-        break;
-      case 'usage':
-        this.tokens = (ev.prompt_tokens || 0) + (ev.completion_tokens || 0);
-        this.postStatus();
-        break;
-      case 'model_changed':
-        this.model = ev.model;
-        this.postStatus();
-        break;
-      case 'mode_changed':
-        this.mode = ev.mode;
-        this.postStatus();
-        break;
-      case 'error':
-        this.log.appendLine(`[evren] hata ${ev.code}: ${ev.message}`);
-        if (ev.reply_to && ev.reply_to === this.promptId && ev.code !== 'mention') {
-          this.busy = false; // tur hiç başlamadı (busy, empty_prompt, internal)
-          this.postStatus();
-        }
-        break;
+      }
     }
-    this.post({ type: 'event', ev });
-    this.events.fire(ev);
+    const order = [...this.sessions.keys()];
+    const idx = order.indexOf(sid);
+    this.sessions.delete(sid);
+    this.postRaw({ type: 'tabClosed', sid });
+    if (this.activeId === sid) {
+      this.activeId = order[idx + 1] ?? order[idx - 1] ?? '';
+    }
+    await s.dispose();
+    if (this.sessions.size) {
+      this.changed();
+    } else {
+      await this.openTab();
+    }
+  }
+
+  // --- Geçmiş ---
+
+  async showHistory(): Promise<void> {
+    if (!this.root) {
+      this.root = (await this.pickRoot()) ?? '';
+    }
+    this.history = this.root ? await listHistory(this.root) : [];
+    const open = new Set([...this.sessions.values()].map((s) => s.cliSessionId).filter(Boolean));
+    this.postRaw({
+      type: 'history',
+      items: this.history.map((h) => ({ ...h, open: open.has(h.session_id) })),
+    });
+  }
+
+  /** Komut paleti / başlık düğmesi: paneli açıp geçmiş listesini gösterir. */
+  async resumeSession(): Promise<void> {
+    await this.reveal();
+    await this.showHistory();
+  }
+
+  private async resumeFromHistory(sessionId: string): Promise<void> {
+    const open = [...this.sessions.values()].find((s) => s.cliSessionId === sessionId);
+    if (open) {
+      this.selectTab(open.id);
+      return;
+    }
+    const item = this.history.find((h) => h.session_id === sessionId);
+    let target = this.active;
+    if (!target || !target.pristine) {
+      target = await this.openTab();
+    }
+    if (!target) {
+      return;
+    }
+    await target.start();
+    await target.resume(sessionId, item?.title ?? '');
+    this.activeId = target.id;
+    this.changed();
   }
 
   // --- Eylemler ---
 
-  async sendPrompt(text: string): Promise<void> {
-    const proc = this.requireProc();
-    if (!proc || !text.trim()) {
-      return;
-    }
-    if (this.busy) {
-      void vscode.window.showInformationMessage('Evren hâlâ çalışıyor; önce durdurun ya da bitmesini bekleyin.');
+  private async sendPrompt(sid: string, text: string): Promise<void> {
+    const s = this.sessions.get(sid);
+    if (!s) {
       return;
     }
     const attachments: Attachment[] = [];
@@ -376,121 +314,56 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         attachments.push(a);
       }
     }
-    this.post({ type: 'userMessage', text, attachments: attachments.map((a) => a.path) });
-    this.busy = true;
-    this.postStatus();
-    this.promptId = proc.send({ type: 'prompt', text, mode: this.mode, ...(attachments.length ? { attachments } : {}) });
+    s.sendPrompt(text, attachments);
+  }
+
+  async start(): Promise<void> {
+    if (!this.sessions.size) {
+      await this.openTab();
+    } else {
+      await this.active?.start();
+    }
+  }
+
+  async restart(): Promise<void> {
+    await this.active?.restart();
   }
 
   cancel(): void {
-    if (this.proc?.running && this.busy) {
-      this.proc.send({ type: 'cancel' });
-    }
+    this.active?.cancel();
   }
 
-  async answerApproval(requestId: string, decision: Decision): Promise<void> {
-    if (!this.pendingApprovals.has(requestId) || !this.proc?.running) {
-      return;
-    }
-    this.pendingApprovals.delete(requestId);
-    let edited: string | undefined;
-    if (decision !== 'deny' && this.diff.has(requestId)) {
-      edited = await this.diff.editedContent(requestId);
-    }
-    this.proc.send({
-      type: 'approval_response', request_id: requestId, decision,
-      ...(edited !== undefined ? { edited_content: edited } : {}),
-    });
-    this.post({ type: 'approvalDone', request_id: requestId, decision, edited: edited !== undefined });
-    await this.diff.close(requestId);
+  async newSession(): Promise<void> {
+    await this.reveal();
+    await this.openTab();
   }
 
   /** Editör başlığındaki Kabul/Reddet düğmeleri için: son açılan diff'e yanıt verir. */
   async answerLatestDiff(decision: Decision): Promise<void> {
-    const id = this.diff.latest();
-    if (id) {
-      await this.answerApproval(id, decision);
-    }
-  }
-
-  async setMode(mode: Mode): Promise<void> {
-    const proc = this.requireProc();
-    if (!proc) {
-      return;
-    }
-    try {
-      await proc.request({ type: 'set_mode', mode }, 'mode_changed');
-    } catch (err) {
-      this.reportError(err);
-      this.postStatus();
+    const key = this.diff.latest();
+    const colon = key?.indexOf(':') ?? -1;
+    if (key && colon > 0) {
+      await this.sessions.get(key.slice(0, colon))?.answerApproval(key.slice(colon + 1), decision);
     }
   }
 
   async selectMode(): Promise<void> {
-    const pick = await vscode.window.showQuickPick(MODES, { placeHolder: `Kip (şu an ${this.mode})` });
+    const s = this.active;
+    if (!s) {
+      return;
+    }
+    const pick = await vscode.window.showQuickPick(MODES, { placeHolder: `Kip (şu an ${s.mode})` });
     if (pick) {
-      await this.setMode(pick as Mode);
+      await s.setMode(pick as Mode);
     }
   }
 
   async selectModel(): Promise<void> {
-    const proc = this.requireProc();
-    if (!proc) {
-      return;
-    }
-    try {
-      const res = await proc.request({ type: 'list_models' }, 'models');
-      const pick = await vscode.window.showQuickPick(
-        res.models.map((m) => ({ label: m, description: m === res.current ? 'şu anki' : undefined })),
-        { placeHolder: 'Model seç' },
-      );
-      if (pick && pick.label !== res.current) {
-        await proc.request({ type: 'set_model', model: pick.label }, 'model_changed');
-      }
-    } catch (err) {
-      this.reportError(err);
-    }
-  }
-
-  async resumeSession(): Promise<void> {
-    const proc = this.requireProc();
-    if (!proc) {
-      return;
-    }
-    try {
-      const res = await proc.request({ type: 'list_sessions', limit: 50 }, 'sessions');
-      if (!res.items.length) {
-        void vscode.window.showInformationMessage('Bu çalışma alanında kayıtlı oturum yok.');
-        return;
-      }
-      const pick = await vscode.window.showQuickPick(
-        res.items.map((s) => ({ label: s.title || s.session_id, description: [s.model, s.mode].filter(Boolean).join(' · '), id: s.session_id })),
-        { placeHolder: 'Devam ettirilecek oturum' },
-      );
-      if (pick) {
-        await proc.request({ type: 'resume', session_id: pick.id }, 'session_loaded');
-      }
-    } catch (err) {
-      this.reportError(err);
-    }
-  }
-
-  async newSession(): Promise<void> {
-    const proc = this.requireProc();
-    if (!proc) {
-      return;
-    }
-    try {
-      await proc.request({ type: 'new_session' }, 'session_loaded');
-      this.tokens = 0;
-      this.postStatus();
-    } catch (err) {
-      this.reportError(err);
-    }
+    await this.active?.selectModel();
   }
 
   addSelection(editor: vscode.TextEditor): void {
-    this.post({ type: 'insert', text: selectionMention(editor, this.root || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '') + ' ' });
+    this.postRaw({ type: 'insert', text: selectionMention(editor, this.root || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '') + ' ' });
     void this.reveal();
   }
 
@@ -499,10 +372,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   private reportError(err: unknown): void {
-    const e = err as ProtocolError;
-    this.log.appendLine(`[evren] ${e.code ?? 'hata'}: ${e.message ?? String(err)}`);
-    const text = e.code === 'busy' ? 'Tur sürerken bu işlem yapılamaz.' : `Evren: ${e.message ?? String(err)}`;
-    void vscode.window.showWarningMessage(text);
+    const e = err as Error;
+    this.log.appendLine(`[evren] ${e.message ?? String(err)}`);
+    void vscode.window.showWarningMessage(`Evren: ${e.message ?? String(err)}`);
   }
 
   // --- HTML ---
@@ -521,9 +393,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 <title>Evren</title>
 </head>
 <body>
+<nav id="tabs">
+  <div id="tablist" role="tablist"></div>
+  <button id="newtab" class="icon" title="Yeni sohbet sekmesi (paralel oturum)" aria-label="Yeni sohbet sekmesi">+</button>
+  <button id="histbtn" class="icon" title="Geçmiş oturumlar" aria-label="Geçmiş oturumlar">&#x1F552;</button>
+</nav>
 <div id="banner" hidden></div>
 <section id="todos" hidden></section>
-<main id="log"></main>
+<div id="logs"></div>
+<section id="history" hidden>
+  <div class="hist-head">
+    <input id="histfilter" type="search" placeholder="Oturumlarda ara…" aria-label="Oturumlarda ara">
+    <button id="histclose" class="icon" title="Kapat (Esc)" aria-label="Kapat">&times;</button>
+  </div>
+  <div id="histlist"></div>
+</section>
 <footer>
   <div id="working" hidden>
     <span class="spinner" aria-hidden="true"></span>
@@ -553,7 +437,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   dispose(): void {
-    void this.proc?.stop();
+    for (const s of this.sessions.values()) {
+      void s.dispose();
+    }
+    this.sessions.clear();
     this.statusItem.dispose();
     this.events.dispose();
     this.disposables.forEach((d) => d.dispose());

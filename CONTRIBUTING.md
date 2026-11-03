@@ -31,3 +31,4 @@ VS Code'da `F5` tuşu Extension Development Host'u açar. Eklenti, PATH'teki `ev
 
 - Commit mesajları kısa ve Türkçe olsun. Her PR'da CI yeşil olmalıdır.
 - Sürüm çıkarmak için `package.json` sürümünü ve `CHANGELOG.md` dosyasını güncelleyin, ardından `vX.Y.Z` etiketini push edin. Release iş akışı `.vsix` dosyasını ekler.
+  Adım adım komutlar README'deki "Commit, push ve sürüm yükseltme" bölümünde.

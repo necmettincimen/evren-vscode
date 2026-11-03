@@ -274,11 +274,19 @@ test('stop stdin\'i kapatır, çıkış beklenen olarak bildirilir', async () =>
 import { parseInMsg } from '../chat/messages';
 
 test('parseInMsg yalnız geçerli webview mesajlarını kabul eder', () => {
-  assert.deepEqual(parseInMsg({ type: 'send', text: 'merhaba', extra: 1 }), { type: 'send', text: 'merhaba' });
-  assert.deepEqual(parseInMsg({ type: 'approval', request_id: 'r1', decision: 'always' }), { type: 'approval', request_id: 'r1', decision: 'always' });
-  assert.equal(parseInMsg({ type: 'approval', request_id: 'r1', decision: 'evet' }), undefined);
-  assert.equal(parseInMsg({ type: 'send', text: 42 }), undefined);
-  assert.equal(parseInMsg({ type: 'setMode', mode: 'yolo' }), undefined);
+  assert.deepEqual(parseInMsg({ type: 'send', sid: 's1', text: 'merhaba', extra: 1 }), { type: 'send', sid: 's1', text: 'merhaba' });
+  assert.deepEqual(
+    parseInMsg({ type: 'approval', sid: 's1', request_id: 'r1', decision: 'always' }),
+    { type: 'approval', sid: 's1', request_id: 'r1', decision: 'always' },
+  );
+  assert.equal(parseInMsg({ type: 'send', text: 'sid yok' }), undefined);
+  assert.equal(parseInMsg({ type: 'approval', sid: 's1', request_id: 'r1', decision: 'evet' }), undefined);
+  assert.equal(parseInMsg({ type: 'send', sid: 's1', text: 42 }), undefined);
+  assert.equal(parseInMsg({ type: 'setMode', sid: 's1', mode: 'yolo' }), undefined);
+  assert.deepEqual(parseInMsg({ type: 'resumeHistory', session_id: 'abc' }), { type: 'resumeHistory', session_id: 'abc' });
+  assert.deepEqual(parseInMsg({ type: 'closeTab', sid: 's2' }), { type: 'closeTab', sid: 's2' });
+  assert.deepEqual(parseInMsg({ type: 'copy', text: 'x' }), { type: 'copy', text: 'x' });
+  assert.equal(parseInMsg({ type: 'copy', text: 5 }), undefined);
   assert.equal(parseInMsg({ type: 'readFile', path: '/etc/passwd' }), undefined);
   assert.equal(parseInMsg(null), undefined);
   assert.equal(parseInMsg('send'), undefined);

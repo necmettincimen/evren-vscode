@@ -8,7 +8,7 @@ export function activate(ctx: vscode.ExtensionContext): { chat: ChatViewProvider
   const log = vscode.window.createOutputChannel('Evren');
   const diff = new DiffManager(path.join(ctx.globalStorageUri.fsPath, 'proposals'));
   const chat = new ChatViewProvider(ctx, log, diff);
-  const agents = new AgentsView(() => chat.process?.pid);
+  const agents = new AgentsView(() => chat.pids());
   const agentsTree = vscode.window.createTreeView(AgentsView.viewId, { treeDataProvider: agents, showCollapseAll: true });
 
   ctx.subscriptions.push(

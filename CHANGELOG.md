@@ -2,6 +2,18 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [Yayınlanmadı]
+
+### Eklendi
+- Sohbet sekmeleri: her sekme ayrı bir CLI süreci; en fazla 6 oturum aynı anda paralel çalışır (meşgul/yanıt bekliyor göstergesi, orta tıkla kapatma).
+- Geçmiş paneli: çalışma alanındaki `.evren/sessions` oturumları listelenir, aranır ve tıklayınca devam ettirilir.
+- Kopyalama: sohbet metni seçilip kopyalanabilir; mesajlara, kod bloklarına ve araç çıktılarına Kopyala düğmesi eklendi. Yanıt akarken seçim bozulmaz.
+- Rust CLI 4.x `turn_end.outcome` alanı (adım sınırı, iptal, bütçe…) tur sonunda gösterilir; şema evren-rs ile eşitlendi.
+
+### Değişti
+- Diff onayları sekme kimliğiyle ad alanlıdır; iki sekmede aynı `request_id` çakışmaz.
+- Durum çubuğu çalışan oturum sayısını gösterir; ajan ağacı tüm sekme süreçlerini "bu pencere" olarak tanır.
+
 ## [0.1.3] - 2026-11-02
 
 ### Değişti

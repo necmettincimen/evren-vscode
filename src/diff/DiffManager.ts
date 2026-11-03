@@ -113,6 +113,13 @@ export class DiffManager implements vscode.TextDocumentContentProvider, vscode.D
     }
   }
 
+  /** Anahtarı `önek` ile başlayan (bir sekmenin) bekleyen önerilerini kapatır. */
+  async closeByPrefix(prefix: string): Promise<void> {
+    for (const id of [...this.proposals.keys()].filter((k) => k.startsWith(prefix))) {
+      await this.close(id);
+    }
+  }
+
   async closeAll(): Promise<void> {
     for (const id of [...this.proposals.keys()]) {
       await this.close(id);

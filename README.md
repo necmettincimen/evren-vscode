@@ -54,7 +54,9 @@ flowchart LR
   Panelde ve diff başlığında Kabul / Reddet / Her zaman izin ver
 - Komut / ssh onayı: komut metni panelde gösterilir
 - `ask_user` soru kartı (seçenek düğmeleri ya da serbest metin), yapılacaklar paneli (`todos`)
-- Durdur (`cancel`, Esc), yeni oturum, oturum geçmişi ve `resume`, model ve kip seçimi
+- Durdur (`cancel`, Esc), model ve kip seçimi
+- Sekmeler: her sekme ayrı bir CLI süreci (en fazla 6 paralel oturum); geçmiş paneli ile eski oturumlar `resume` edilir
+- Metin seçilip kopyalanabilir; mesaj, kod bloğu ve araç çıktısı için Kopyala düğmesi
 - Durum çubuğunda model · kip · token
 - `@` ile dosya seçici, `Ctrl+Alt+K` seçimi `@yol#L10-20` olarak ekler
 - stderr ve süreç günlüğü **Evren** çıktı kanalında (`Evren: Show Logs`)
@@ -102,6 +104,39 @@ API anahtarları ayarlara yazılmaz; CLI kendi yapılandırmasını (`~/.evren`,
 
 `Evren: Open Chat`, `New Session`, `Resume Session`, `Add Selection to Chat`, `Cancel`,
 `Select Model`, `Select Mode`, `Restart CLI`, `Show Logs`, `Ajanları yenile`.
+
+## 🚀 Commit, push ve sürüm yükseltme
+
+Günlük değişiklik (PowerShell):
+
+```powershell
+npm test                      # derler + birim testleri
+git add -A
+git commit -m "kısa Türkçe açıklama"
+git push
+```
+
+Yeni sürüm çıkarmak için (örnek: 0.2.0). `vX.Y.Z` etiketi push edilince Release iş akışı `.vsix` dosyasını GitHub Releases'e ekler:
+
+```powershell
+# 1. Sürümü yükselt (patch | minor | major); etiket/commit'i kendisi açmasın
+npm version minor --no-git-tag-version
+
+# 2. CHANGELOG.md içindeki "[Yayınlanmadı]" başlığını "[0.2.0] - YYYY-AA-GG" yap,
+#    README'deki indirme bağlantısındaki evren-vscode-X.Y.Z.vsix sürümünü güncelle
+
+# 3. Doğrula, commit et, etiketle, gönder
+npm test
+git add -A
+git commit -m "0.2.0: kısa özet"
+git tag v0.2.0
+git push origin master --tags
+
+# İsteğe bağlı: yerelde paket üret
+npm run package               # evren-vscode-0.2.0.vsix
+```
+
+Etiket `package.json` sürümüyle aynı olmalıdır; değilse Release iş akışı durur. Yanlış etiketi geri almak için: `git tag -d v0.2.0; git push origin :refs/tags/v0.2.0`.
 
 ## 🔗 Protokol sürüm uyumu
 

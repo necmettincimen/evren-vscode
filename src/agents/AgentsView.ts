@@ -40,8 +40,8 @@ export class AgentsView implements vscode.TreeDataProvider<AgentNode>, vscode.Di
   snapshot: AgentsSnapshot = { processes: [], logs: [], at: 0 };
 
   constructor(
-    /** Bu pencerenin stdio sürecinin pid'i: listede işaretlenir. */
-    private ownPid: () => number | undefined,
+    /** Bu pencerenin stdio süreçlerinin pid'leri (her sohbet sekmesi bir süreç): listede işaretlenir. */
+    private ownPids: () => readonly number[],
     private list: () => Promise<RawProcess[]> = () => listProcesses(),
   ) {}
 
@@ -152,7 +152,7 @@ export class AgentsView implements vscode.TreeDataProvider<AgentNode>, vscode.Di
   }
 
   private processItem(p: AgentProcess): vscode.TreeItem {
-    const own = p.pid === this.ownPid();
+    const own = this.ownPids().includes(p.pid);
     const item = new vscode.TreeItem(
       processLabel(p) + (own ? ' (bu pencere)' : ''),
       p.children.length ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
