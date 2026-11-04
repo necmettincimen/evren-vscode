@@ -416,6 +416,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     <span class="spacer"></span>
     <span class="hint">Esc ile durdur</span>
   </div>
+  <details id="promptkit" class="promptkit" open hidden>
+    <summary>Prompt yardımcısı <span class="sub">rol · hedef · çıktı (isteğe bağlı)</span></summary>
+    <label>Rol <textarea id="kit-role" rows="1" placeholder="Örn. Kıdemli bir TypeScript geliştiricisi gibi davran"></textarea></label>
+    <label>Hedef <textarea id="kit-goal" rows="2" placeholder="Örn. Giriş ekranındaki oturum yenileme hatasını bul ve düzelt"></textarea></label>
+    <label>Çıktı <textarea id="kit-out" rows="1" placeholder="Örn. Önce kısa plan, sonra yalnız değişen dosyalar; Türkçe, kısa"></textarea></label>
+    <div class="hint">Gönderince bu alanlar aşağıdaki mesajla tek prompt'ta birleşir.</div>
+  </details>
   <div class="composer">
     <textarea id="input" rows="3" placeholder="Evren'e yaz… (@ dosya ekler, Enter gönderir, Shift+Enter yeni satır)"></textarea>
     <div class="toolbar">

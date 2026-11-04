@@ -2,6 +2,11 @@
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/), sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [0.3.0] - 2026-11-04
+
+### Eklendi
+- Prompt yardımcısı: yeni sohbette ilk mesajdan önce Rol / Hedef / Çıktı kutuları görünür; doldurulanlar gönderirken mesajla tek prompt'ta birleşir. İlk mesajdan sonra ya da devam ettirilen oturumda gizlenir.
+
 ## [0.2.0] - 2026-11-03
 
 ### Eklendi

@@ -55,6 +55,22 @@ button.hist.open { border-color: var(--vscode-focusBorder); }
 .hist .h-title { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist .h-meta { opacity: 0.65; font-size: 0.85em; margin-top: 2px; }
 footer { padding: 4px 8px 8px; }
+.promptkit {
+  margin-bottom: 6px; padding: 4px 8px;
+  border: 1px dashed var(--vscode-panel-border); border-radius: 6px;
+}
+.promptkit[hidden] { display: none; }
+.promptkit summary { cursor: pointer; font-weight: bold; }
+.promptkit summary .sub { font-weight: normal; opacity: 0.6; font-size: 0.85em; margin-left: 4px; }
+.promptkit label { display: block; margin-top: 6px; font-size: 0.85em; opacity: 0.9; }
+.promptkit textarea {
+  display: block; width: 100%; box-sizing: border-box; resize: vertical; margin-top: 2px;
+  font-family: inherit; font-size: inherit; padding: 4px 6px; max-height: 20vh;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 4px;
+}
+.promptkit textarea:focus { outline: none; border-color: var(--vscode-focusBorder); }
+.promptkit .hint { margin-top: 4px; font-size: 0.8em; opacity: 0.6; }
 .composer {
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
   border-radius: 6px;

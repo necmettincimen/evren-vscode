@@ -43,6 +43,10 @@ interface Tab {
   stage: string;
   waiting: boolean;
   draft: string;
+  /** İlk kullanıcı mesajı gitti mi (prompt yardımcısı yalnız öncesinde görünür). */
+  started: boolean;
+  /** Prompt yardımcısı alanları: rol, hedef, çıktı. */
+  kit: [string, string, string];
 }
 
 (() => {
@@ -64,6 +68,9 @@ interface Tab {
   const historyEl = $<HTMLElement>('history');
   const histList = $<HTMLElement>('histlist');
   const histFilter = $<HTMLInputElement>('histfilter');
+  const kitEl = $<HTMLDetailsElement>('promptkit');
+  const kitFields = ['kit-role', 'kit-goal', 'kit-out'].map((id) => $<HTMLTextAreaElement>(id));
+  const KIT_LABELS = ['Rol', 'Hedef', 'Çıktı'];
 
   const tabs = new Map<string, Tab>();
   let cur: Tab | undefined;
@@ -180,6 +187,7 @@ interface Tab {
       id: info.id, info, logEl, assistantText: '', renderQueued: false,
       toolCards: new Map(), proposals: new Map(), todos: [], status: {},
       busy: false, ready: false, turnStartedAt: 0, stage: 'Düşünüyor…', waiting: false, draft: '',
+      started: false, kit: ['', '', ''],
     };
     tabs.set(info.id, t);
     return t;
@@ -229,11 +237,14 @@ interface Tab {
   function switchTo(t: Tab): void {
     if (cur) {
       cur.draft = input.value;
+      cur.kit = kitFields.map((f) => f.value) as [string, string, string];
       cur.logEl.hidden = true;
     }
     cur = t;
     t.logEl.hidden = false;
     input.value = t.draft;
+    kitFields.forEach((f, i) => (f.value = t.kit[i]));
+    renderKit();
     autosize();
     closeHistory();
     renderTabs();
@@ -480,6 +491,8 @@ interface Tab {
         endStream(t);
         t.todos = [];
         if (t === cur) renderTodos();
+        t.started = (ev.messages || []).length > 0;
+        if (t === cur) renderKit();
         for (const m of ev.messages || []) {
           t.logEl.appendChild(msgEl(m.role === 'user' ? 'user' : 'assistant', String(m.text ?? '')));
         }
@@ -694,6 +707,8 @@ interface Tab {
         const t = tabFor(m.sid);
         if (!t) break;
         endStream(t);
+        t.started = true;
+        if (t === cur) renderKit();
         const d = add(t, msgEl('user', String(m.text)));
         if (Array.isArray(m.attachments) && m.attachments.length) d.insertBefore(el('div', 'att', '📎 ' + m.attachments.join(', ')), d.querySelector('.copy'));
         // turn_start gelmeden de beklendiği görünsün.
@@ -727,13 +742,33 @@ interface Tab {
 
   // ---------- kullanıcı girişleri ----------
 
+  /** Prompt yardımcısı yalnız henüz mesaj gönderilmemiş sekmede görünür. */
+  function renderKit(): void {
+    kitEl.hidden = !cur || cur.started;
+  }
+
+  const NL = String.fromCharCode(10);
+
+  /** Dolu rol/hedef/çıktı alanlarını, asıl mesajın önüne etiketli başlıklar olarak ekler. */
+  function composePrompt(t: Tab): string {
+    const main = input.value.trim();
+    if (t.started) return main;
+    const parts = kitFields
+      .map((f, i) => (f.value.trim() ? `**${KIT_LABELS[i]}:** ${f.value.trim()}` : ''))
+      .filter(Boolean);
+    return parts.length ? [...parts, main].filter(Boolean).join(NL + NL) : main;
+  }
+
   function send(): void {
     const t = cur;
-    const text = input.value;
-    if (!t || !text.trim() || t.busy || !t.ready) return;
+    if (!t || t.busy || !t.ready) return;
+    const text = composePrompt(t);
+    if (!text) return;
     vscode.postMessage({ type: 'send', sid: t.id, text });
     input.value = '';
     input.style.height = '';
+    kitFields.forEach((f) => (f.value = ''));
+    t.kit = ['', '', ''];
   }
 
   function cancel(): void {
