@@ -6,12 +6,8 @@
 
 **EVREN CLI için kenar çubuğu sohbet paneli: akan yanıt, araç kartları, diff ile onay, oturumlar ve plan ajanları.**
 
-[![CI](https://github.com/necmettincimen/evren-vscode/actions/workflows/ci.yml/badge.svg)](https://github.com/necmettincimen/evren-vscode/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/necmettincimen/evren-vscode?sort=semver)](https://github.com/necmettincimen/evren-vscode/releases)
 [![Marketplace](https://img.shields.io/visual-studio-marketplace/v/necmettincimen.evren-vscode?label=marketplace)](https://marketplace.visualstudio.com/items?itemName=necmettincimen.evren-vscode)
-[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=necmettincimen_evren-vscode&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=necmettincimen_evren-vscode)
-[![CodeQL](https://github.com/necmettincimen/evren-vscode/actions/workflows/codeql.yml/badge.svg)](https://github.com/necmettincimen/evren-vscode/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/necmettincimen/evren-vscode/badge)](https://scorecard.dev/viewer/?uri=github.com/necmettincimen/evren-vscode)
 [![License: MIT](https://img.shields.io/github/license/necmettincimen/evren-vscode)](LICENSE)
 
 [Kurulum](#-kurulum) · [evren-cli](https://github.com/necmettincimen/evren-cli) ·
@@ -116,7 +112,7 @@ git commit -m "kısa Türkçe açıklama"
 git push
 ```
 
-Yeni sürüm çıkarmak için (örnek: 0.2.0). `vX.Y.Z` etiketi push edilince Release iş akışı `.vsix` dosyasını GitHub Releases'e ekler:
+Yeni sürüm çıkarmak için (örnek: 0.2.0). `vX.Y.Z` etiketi push edilir, `.vsix` dosyası yerelde paketlenip `gh release create` ile GitHub Releases'e eklenir (GitHub Actions kullanılmıyor):
 
 ```powershell
 # 1. Sürümü yükselt (patch | minor | major); etiket/commit'i kendisi açmasın
@@ -132,11 +128,12 @@ git commit -m "0.2.0: kısa özet"
 git tag v0.2.0
 git push origin master --tags
 
-# İsteğe bağlı: yerelde paket üret
+# 4. Paketle ve yayınla
 npm run package               # evren-vscode-0.2.0.vsix
+gh release create v0.2.0 evren-vscode-0.2.0.vsix --title "evren-vscode v0.2.0" --notes-file notes.md
 ```
 
-Etiket `package.json` sürümüyle aynı olmalıdır; değilse Release iş akışı durur. Yanlış etiketi geri almak için: `git tag -d v0.2.0; git push origin :refs/tags/v0.2.0`.
+Etiket `package.json` sürümüyle aynı olmalıdır. Yanlış etiketi geri almak için: `git tag -d v0.2.0; git push origin :refs/tags/v0.2.0`.
 
 ## 🔗 Protokol sürüm uyumu
 
